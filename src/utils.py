@@ -1,10 +1,55 @@
 import os
 import sys
+import math
+import random
+import time
 import pygetwindow as gw
 import pyautogui
 import numpy as np
 import cv2
 import keyboard
+
+
+def human_move_to(x, y=None):
+    """Move em curva, com velocidade variada, mantendo o destino exato."""
+    if y is None:
+        x, y = x
+    x, y = int(x), int(y)
+    start_x, start_y = pyautogui.position()
+    dx, dy = x - start_x, y - start_y
+    distance = math.hypot(dx, dy)
+    if distance == 0:
+        return
+
+    duration = random.uniform(0.18, 0.30) + min(distance / 1600, 0.60)
+    bend = random.uniform(-1, 1) * min(distance * 0.18, 80)
+    midpoint = random.uniform(0.35, 0.65)
+    control_x = start_x + dx * midpoint - dy / distance * bend
+    control_y = start_y + dy * midpoint + dx / distance * bend
+    width, height = pyautogui.size()
+    control_x = max(min(0, start_x, x), min(max(width - 1, start_x, x), control_x))
+    control_y = max(min(0, start_y, y), min(max(height - 1, start_y, y), control_y))
+
+    steps = max(12, int(duration * 60))
+    started_at = time.perf_counter()
+    for step in range(1, steps + 1):
+        progress = step / steps
+        t = progress * progress * (3 - 2 * progress)
+        inverse = 1 - t
+        next_x = inverse ** 2 * start_x + 2 * inverse * t * control_x + t ** 2 * x
+        next_y = inverse ** 2 * start_y + 2 * inverse * t * control_y + t ** 2 * y
+        pyautogui.moveTo(round(next_x), round(next_y), _pause=False)
+        delay = started_at + duration * progress - time.perf_counter()
+        if delay > 0:
+            time.sleep(delay)
+
+
+def human_click(x, y=None):
+    """Chega ao alvo suavemente e varia as pausas ao redor do clique."""
+    human_move_to(x, y)
+    time.sleep(random.uniform(0.06, 0.16))
+    pyautogui.click(_pause=False)
+    time.sleep(random.uniform(0.08, 0.20))
 
 
 def get_resource_path(relative_path):
@@ -85,8 +130,7 @@ def resolve_equation():
             print(f"[OCR] Resultado: {num1} + {num2} = {resultado}")
             for digit in str(resultado):
                 keyboard.press_and_release(digit)
-            pyautogui.moveTo(mouse_x + 265, mouse_y + 110)
-            pyautogui.click()
+            human_click(mouse_x + 265, mouse_y + 110)
         else:
             print("[OCR] Não foi possível extrair ambos os números corretamente.")
     except Exception as e:

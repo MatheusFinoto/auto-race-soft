@@ -1,14 +1,13 @@
 import pyautogui
 from src import config
-from src.utils import get_gw_screen
+from src.utils import get_gw_screen, human_click
 
 def do_press_btn_ok():
     try:
         lBtnOk = pyautogui.locateOnScreen(config.btnOk, confidence=config.CONFIDENCE)
         if lBtnOk:
             centro = pyautogui.center(lBtnOk)
-            pyautogui.moveTo(centro)
-            pyautogui.click()
+            human_click(centro)
         else:
             print("[UI] Botão 'OK' não encontrado na tela.")
     except Exception as e:
@@ -19,8 +18,7 @@ def do_press_btn_search():
         lBtnSearch = pyautogui.locateOnScreen(config.btnSearch, confidence=config.CONFIDENCE)
         if lBtnSearch:
             centro = pyautogui.center(lBtnSearch)
-            pyautogui.moveTo(centro)
-            pyautogui.click()
+            human_click(centro)
         else:
             print("[UI] Botão 'Search' não encontrado na tela.")
     except Exception as e:
@@ -31,8 +29,7 @@ def do_press_btn_finish():
         lBtnOk = pyautogui.locateOnScreen(config.btnFinish, confidence=config.CONFIDENCE, region=get_gw_screen())
         if lBtnOk:
             centro = pyautogui.center(lBtnOk)
-            pyautogui.moveTo(centro)
-            pyautogui.click()
+            human_click(centro)
         else:
             print("[UI] Botão 'FINISH' não encontrado na tela.")
     except Exception as e:
@@ -43,8 +40,7 @@ def do_press_btn_accept():
         lBtnOk = pyautogui.locateOnScreen(config.btnAccept, confidence=config.CONFIDENCE, region=get_gw_screen())
         if lBtnOk:
             centro = pyautogui.center(lBtnOk)
-            pyautogui.moveTo(centro)
-            pyautogui.click()
+            human_click(centro)
         else:
             print("[UI] Botão 'ACCEPT' não encontrado na tela.")
     except Exception as e:
