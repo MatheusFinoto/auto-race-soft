@@ -4,7 +4,7 @@ from pyautogui import ImageNotFoundException
 
 def do_ar_step_1(box):
     centro = pyautogui.center(box)
-    pyautogui.moveTo(centro.x - 170, centro.y - 30)
+    pyautogui.moveTo(centro.x - 170, centro.y - 45)
     pyautogui.click()
     print("[Step] SUCESSO STEP 1")
 

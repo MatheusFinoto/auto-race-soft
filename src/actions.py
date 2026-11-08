@@ -36,8 +36,8 @@ def switch_field_action(ar_field):
         return auto_race.do_ar_step_1(ar_field['box'])
     elif ar_field['field'] == "ar_field_step_2":
         return auto_race.do_ar_step_2(ar_field['box'])
-    elif ar_field['field'] == "ar_field_step_3":
-        return auto_race.do_ar_step_3(ar_field['box'])
+    #elif ar_field['field'] == "ar_field_step_3":
+    #    return auto_race.do_ar_step_3(ar_field['box'])
     # DQ Actions
     elif ar_field['field'] == "dq_thermo_125_daily":
         return dq_actions.do_dq_125_daily(ar_field['box'])
