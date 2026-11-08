@@ -21,7 +21,7 @@ def human_move_to(x, y=None):
     if distance == 0:
         return
 
-    duration = random.uniform(0.18, 0.30) + min(distance / 1600, 0.60)
+    duration = (random.uniform(0.18, 0.30) + min(distance / 1600, 0.60)) * 0.75
     bend = random.uniform(-1, 1) * min(distance * 0.18, 80)
     midpoint = random.uniform(0.35, 0.65)
     control_x = start_x + dx * midpoint - dy / distance * bend
@@ -44,8 +44,13 @@ def human_move_to(x, y=None):
             time.sleep(delay)
 
 
-def human_click(x, y=None):
-    """Chega ao alvo suavemente e varia as pausas ao redor do clique."""
+def human_click(x, y=None, *, jitter=0):
+    """Chega ao alvo suavemente, com desvio opcional e pausas variadas."""
+    if jitter:
+        if y is None:
+            x, y = x
+        x += random.randint(-jitter, jitter)
+        y += random.randint(-jitter, jitter)
     human_move_to(x, y)
     time.sleep(random.uniform(0.06, 0.16))
     pyautogui.click(_pause=False)
@@ -119,9 +124,9 @@ def extract_number_from_region(region, scale_percent=400):
         print(f"[Imagem] Nenhuma correspondência forte encontrada. Score máximo: {best_score}")
         return None
 
-def resolve_equation():
+def resolve_equation(origin=None):
     try:
-        mouse_x, mouse_y = pyautogui.position()
+        mouse_x, mouse_y = pyautogui.position() if origin is None else origin
         num1 = extract_number_from_region((mouse_x - 175, mouse_y - 20, 40, 40))
         num2 = extract_number_from_region((mouse_x - 125, mouse_y - 20, 40, 40))
 
