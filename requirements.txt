@@ -1,0 +1,7 @@
+pyautogui
+opencv-python
+keyboard
+pillow
+pytesseract
+sympy 
+matplotlib
