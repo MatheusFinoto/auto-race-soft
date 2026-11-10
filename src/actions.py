@@ -9,6 +9,8 @@ from src.buttons import buttons
 
 def get_actual_field():
     region = utils.get_gw_screen()
+    if region is None or region[2] <= 0 or region[3] <= 0:
+        return "unknown"
     confidence = config.CONFIDENCE
     fields = [
         # Campos de Auto Race
@@ -36,8 +38,8 @@ def switch_field_action(ar_field):
         return auto_race.do_ar_step_1(ar_field['box'])
     elif ar_field['field'] == "ar_field_step_2":
         return auto_race.do_ar_step_2(ar_field['box'])
-    #elif ar_field['field'] == "ar_field_step_3":
-    #    return auto_race.do_ar_step_3(ar_field['box'])
+    elif ar_field['field'] == "ar_field_step_3":
+        return auto_race.do_ar_step_3(ar_field['box'])
     # DQ Actions
     elif ar_field['field'] == "dq_thermo_125_daily":
         return dq_actions.do_dq_125_daily(ar_field['box'])
@@ -57,3 +59,7 @@ def safe_locate_on_screen(image, confidence, region):
         return pyautogui.locateOnScreen(image, confidence=confidence, region=region)
     except ImageNotFoundException:
         return None
+    except ValueError as error:
+        if str(error) == "needle dimension(s) exceed the haystack image or region dimensions":
+            return None
+        raise

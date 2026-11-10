@@ -1,6 +1,5 @@
 import pyautogui
 from src import utils
-from pyautogui import ImageNotFoundException
 
 def do_ar_step_1(box):
     centro = pyautogui.center(box)
@@ -15,8 +14,9 @@ def do_ar_step_2(box):
     print("[Step] SUCESSO STEP 2")
 
 def do_ar_step_3(box):
-    centro = pyautogui.center(box)
-    ponto_clique = (centro.x - 100, centro.y + 90)
+    ponto_clique = (box.left + 198, box.top + 153)
     utils.human_click(ponto_clique, jitter=2)
+    if not utils.resolve_equation(origin=ponto_clique):
+        return False
     print("[Step] SUCESSO STEP 3")
-    utils.resolve_equation(origin=ponto_clique)
+    return True

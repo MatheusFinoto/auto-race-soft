@@ -2,12 +2,17 @@ import os
 import sys
 import math
 import random
+import re
 import time
 import pygetwindow as gw
 import pyautogui
 import numpy as np
 import cv2
 import keyboard
+import pytesseract
+from PIL import Image, ImageOps
+
+from src.auto_race.number_reader import DigitTemplateBank
 
 
 def human_move_to(x, y=None):
@@ -21,7 +26,7 @@ def human_move_to(x, y=None):
     if distance == 0:
         return
 
-    duration = (random.uniform(0.18, 0.30) + min(distance / 1600, 0.60)) * 0.75
+    duration = (random.uniform(0.18, 0.30) + min(distance / 1600, 0.60)) * 0.85
     bend = random.uniform(-1, 1) * min(distance * 0.18, 80)
     midpoint = random.uniform(0.35, 0.65)
     control_x = start_x + dx * midpoint - dy / distance * bend
@@ -49,7 +54,7 @@ def human_click(x, y=None, *, jitter=0):
     if jitter:
         if y is None:
             x, y = x
-        x += random.randint(-jitter, jitter)
+        x += random.randint(-10, 10)
         y += random.randint(-jitter, jitter)
     human_move_to(x, y)
     time.sleep(random.uniform(0.06, 0.16))
@@ -67,12 +72,12 @@ def get_resource_path(relative_path):
 
 def get_gw_screen():
     windows = gw.getWindowsWithTitle("Godsarena Online")
-    if windows:
-        window = windows[0]
-        return (window.left, window.top, window.width, window.height)
-    else:
+    for window in windows:
+        if not window.isMinimized and window.width > 0 and window.height > 0:
+            return (window.left, window.top, window.width, window.height)
+    if not windows:
         print("[Janela] Janela GodsWar não encontrada.")
-        return None
+    return None
     
 # Cache das imagens de referência
 AWNSERS_CACHE = []
@@ -95,11 +100,18 @@ def load_awnsers_images():
 
 # Inicializa o cache ao carregar o módulo
 AWNSERS_CACHE = load_awnsers_images()
+DIGIT_TEMPLATES = DigitTemplateBank(get_resource_path("images/awnsers"))
     
 def extract_number_from_region(region, scale_percent=400):
+    # O OpenCV retorna np.int64; a captura do Windows exige int nativo.
+    region = tuple(int(value) for value in region)
     screenshot = pyautogui.screenshot(region=region)
+    number = DIGIT_TEMPLATES.read_number(screenshot)
+    if number is not None:
+        return number
+
     img_np = np.array(screenshot)
-    gray = cv2.cvtColor(img_np, cv2.COLOR_BGR2GRAY)
+    gray = cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY)
     width = int(gray.shape[1] * scale_percent / 100)
     height = int(gray.shape[0] * scale_percent / 100)
     resized = cv2.resize(gray, (width, height), interpolation=cv2.INTER_LINEAR)
@@ -120,24 +132,46 @@ def extract_number_from_region(region, scale_percent=400):
     # Considera match apenas se score for maior que 80%
     if best_score > 0.8:
         return best_num
-    else:
-        print(f"[Imagem] Nenhuma correspondência forte encontrada. Score máximo: {best_score}")
-        return None
+
+    # Usa OCR quando nenhum template reconhece o número.
+    from src.config import TESSERACT_PATH
+
+    tesseract_exe = os.path.join(TESSERACT_PATH, "tesseract.exe")
+    if os.path.isfile(tesseract_exe):
+        pytesseract.pytesseract.tesseract_cmd = tesseract_exe
+    enlarged = screenshot.convert("L").resize(
+        (screenshot.width * 8, screenshot.height * 8),
+        Image.Resampling.BICUBIC,
+    )
+    text = pytesseract.image_to_string(
+        ImageOps.expand(
+            ImageOps.invert(ImageOps.autocontrast(enlarged)),
+            border=30,
+            fill=255,
+        ),
+        config="--oem 3 --psm 7 -c tessedit_char_whitelist=0123456789",
+    )
+    # Texto fragmentado (por exemplo "5 9") não pode virar apenas "5".
+    match = re.fullmatch(r"[0-9]+", text.strip())
+    return int(match.group(0)) if match else None
 
 def resolve_equation(origin=None):
     try:
         mouse_x, mouse_y = pyautogui.position() if origin is None else origin
-        num1 = extract_number_from_region((mouse_x - 175, mouse_y - 20, 40, 40))
-        num2 = extract_number_from_region((mouse_x - 125, mouse_y - 20, 40, 40))
+        num1 = extract_number_from_region((mouse_x - 174, mouse_y - 19, 40, 40))
+        num2 = extract_number_from_region((mouse_x - 124, mouse_y - 19, 40, 40))
 
         if num1 is not None and num2 is not None:
             resultado = num1 + num2
             print(f"[OCR] Resultado: {num1} + {num2} = {resultado}")
             for digit in str(resultado):
                 keyboard.press_and_release(digit)
+                time.sleep(random.triangular(0.08, 0.18, 0.12))
             human_click(mouse_x + 265, mouse_y + 110)
+            return True
         else:
             print("[OCR] Não foi possível extrair ambos os números corretamente.")
+            return False
     except Exception as e:
         print("[OCR] Erro ao tentar resolver a equação:", e)
         return False
