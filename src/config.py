@@ -1,5 +1,10 @@
+import os
+
 from src.utils import get_resource_path
-TESSERACT_PATH = r"C:\Program Files\Tesseract-OCR"
+
+TESSERACT_PATH = get_resource_path("tesseract")
+if not os.path.isfile(os.path.join(TESSERACT_PATH, "tesseract.exe")):
+    TESSERACT_PATH = r"C:\Program Files\Tesseract-OCR"
 
 # Configurações gerais do projeto
 

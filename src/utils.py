@@ -84,8 +84,7 @@ AWNSERS_CACHE = []
 
 def load_awnsers_images():
     """Carrega todas as imagens de referência em memória."""
-    awnsers_dir = os.path.join(os.path.dirname(__file__), '..', 'images', 'awnsers')
-    awnsers_dir = get_resource_path(awnsers_dir)
+    awnsers_dir = get_resource_path(os.path.join('images', 'awnsers'))
     cache = []
     for filename in os.listdir(awnsers_dir):
         if filename.endswith('.png'):

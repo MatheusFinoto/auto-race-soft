@@ -6,7 +6,7 @@ for stream in (sys.stdout, sys.stderr):
         stream.reconfigure(encoding="utf-8", line_buffering=True)
 
 import keyboard
-from src import actions, config
+from src import actions, config, utils
 
 exit_flag = threading.Event()
 
@@ -32,7 +32,25 @@ def executar_script():
 
         exit_flag.wait(config.WAIT_TIME)
 
+def check_build():
+    """Valida imports, imagens e OCR sem iniciar a automação."""
+    from pathlib import Path
+
+    if not utils.AWNSERS_CACHE:
+        raise RuntimeError("Templates de numeros nao encontrados.")
+    tesseract = Path(config.TESSERACT_PATH) / "tesseract.exe"
+    if not (tesseract.parent / "tessdata" / "eng.traineddata").is_file():
+        raise FileNotFoundError("Dados de OCR nao encontrados.")
+    utils.pytesseract.pytesseract.tesseract_cmd = str(tesseract)
+    version = utils.pytesseract.get_tesseract_version()
+    print(f"Executavel: {Path(sys.executable).name}")
+    print(f"Build OK: {len(utils.AWNSERS_CACHE)} templates; Tesseract {version}.")
+
+
 if __name__ == "__main__":
-    print("Script de automação iniciado em loop infinito.")
-    print("Pressione 'ESC' para parar a qualquer momento.")
-    executar_script()
+    if "--check-build" in sys.argv[1:]:
+        check_build()
+    else:
+        print("Script de automação iniciado em loop infinito.")
+        print("Pressione 'ESC' para parar a qualquer momento.")
+        executar_script()
