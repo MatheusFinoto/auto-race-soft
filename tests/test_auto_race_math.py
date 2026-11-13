@@ -1,4 +1,5 @@
 import io
+import os
 from contextlib import redirect_stdout
 from pathlib import Path
 from types import SimpleNamespace
@@ -11,10 +12,19 @@ import pyscreeze
 
 from src import actions, utils
 from src.auto_race import auto_race
+from src.auto_race.equation import Addition
 
 
 class AutoRaceMathTest(unittest.TestCase):
     def setUp(self):
+        environment = {
+            key: value for key, value in os.environ.items()
+            if not key.startswith("AUTO_RACE_")
+        }
+        environment["AUTO_RACE_READER"] = "templates"
+        self.start_context(patch.dict(os.environ, environment, clear=True))
+        self.start_context(patch.object(utils, "_LOCAL_READER", None))
+        self.start_context(patch.object(utils, "_LOCAL_RETRY_AT", 0.0))
         self.box = SimpleNamespace(left=100, top=200, width=596, height=125)
         self.click = self.start_patch("src.utils.human_click")
         self.press = self.start_patch("src.utils.keyboard.press_and_release")
@@ -62,6 +72,160 @@ class AutoRaceMathTest(unittest.TestCase):
         )
         self.ocr.assert_not_called()
         self.assertIn("SUCESSO STEP 3", self.output.getvalue())
+
+    def configure_local(self):
+        os.environ["AUTO_RACE_READER"] = "local"
+        factory = self.start_patch(
+            "src.auto_race.local_reader.LocalEquationReader"
+        )
+        clock = self.start_patch("src.utils.time.monotonic", return_value=100.0)
+        self.start_patch("src.utils.time.sleep")
+        self.start_patch(
+            "src.utils.extract_number_from_region",
+            side_effect=AssertionError("O modo local não deve usar os templates antigos"),
+        )
+        return factory, factory.return_value, clock
+
+    def test_local_reader_reads_whole_expression_and_sends_the_python_sum(self):
+        factory, reader, _ = self.configure_local()
+        for left, right in ((26, 40), (62, 2), (23, 46), (78, 43), (29, 31)):
+            with self.subTest(left=left, right=right):
+                self.screenshot.reset_mock()
+                self.press.reset_mock()
+                self.click.reset_mock()
+                reader.read_equation.return_value = Addition(left, right)
+
+                self.assertTrue(auto_race.do_ar_step_3(self.box))
+
+                self.screenshot.assert_called_once_with(region=(124, 334, 100, 40))
+                reader.read_equation.assert_called_with(self.screenshot.return_value)
+                self.assertEqual(
+                    self.press.call_args_list, [call(digit) for digit in str(left + right)]
+                )
+                self.assertEqual(
+                    self.click.call_args_list,
+                    [call((298, 353), jitter=2), call(563, 463)],
+                )
+        factory.assert_called_once_with()
+        self.ocr.assert_not_called()
+
+    def test_local_reader_uses_configured_region_and_native_integer_coordinates(self):
+        _, reader, _ = self.configure_local()
+        reader.read_equation.return_value = Addition(26, 40)
+        os.environ["AUTO_RACE_EQUATION_REGION"] = " -170, -20, 110, 42 "
+        box = pyscreeze.Box(np.int64(100), np.int64(200), np.int64(596), np.int64(125))
+
+        self.assertTrue(auto_race.do_ar_step_3(box))
+
+        self.screenshot.assert_called_once_with(region=(128, 333, 110, 42))
+        self.assertTrue(all(type(value) is int for value in self.screenshot.call_args.kwargs["region"]))
+        self.ocr.assert_not_called()
+
+    def test_unreadable_local_equation_cools_down_without_fallback_or_answer(self):
+        _, reader, clock = self.configure_local()
+        reader.read_equation.return_value = None
+
+        self.assertFalse(auto_race.do_ar_step_3(self.box))
+        clock.return_value = 104.99
+        self.assertFalse(auto_race.do_ar_step_3(self.box))
+
+        reader.read_equation.assert_called_once()
+        self.screenshot.assert_called_once()
+        self.press.assert_not_called()
+        self.assertEqual(
+            self.click.call_args_list,
+            [call((298, 353), jitter=2), call((298, 353), jitter=2)],
+        )
+        self.ocr.assert_not_called()
+        self.assertNotIn("SUCESSO STEP 3", self.output.getvalue())
+
+    def test_local_failure_retries_only_after_nonblocking_cooldown(self):
+        from src.auto_race.local_reader import LocalReadError
+
+        factory, reader, clock = self.configure_local()
+        reader.read_equation.side_effect = [LocalReadError("Reconhecedor indisponível"), Addition(26, 40)]
+
+        self.assertFalse(auto_race.do_ar_step_3(self.box))
+        clock.return_value = 104.99
+        self.assertFalse(auto_race.do_ar_step_3(self.box))
+        self.press.assert_not_called()
+        reader.read_equation.assert_called_once()
+        utils.time.sleep.assert_not_called()
+
+        clock.return_value = 105.0
+        self.assertTrue(auto_race.do_ar_step_3(self.box))
+        self.assertEqual(reader.read_equation.call_count, 2)
+        self.assertEqual(self.screenshot.call_count, 2)
+        self.assertEqual(self.press.call_args_list, [call("6"), call("6")])
+        factory.assert_called_once_with()
+        self.ocr.assert_not_called()
+
+    def test_local_initialization_failure_does_not_capture_or_send_answer(self):
+        from src.auto_race.local_reader import LocalReadError
+
+        factory, _, clock = self.configure_local()
+        factory.side_effect = LocalReadError("Modelo local indisponível")
+
+        self.assertFalse(auto_race.do_ar_step_3(self.box))
+        clock.return_value = 104.99
+        self.assertFalse(auto_race.do_ar_step_3(self.box))
+
+        factory.assert_called_once_with()
+        self.screenshot.assert_not_called()
+        self.press.assert_not_called()
+        self.ocr.assert_not_called()
+        self.assertNotIn("SUCESSO STEP 3", self.output.getvalue())
+
+    def test_prepare_number_reader_validates_and_caches_local_model(self):
+        factory, reader, _ = self.configure_local()
+
+        self.assertIs(utils.prepare_number_reader(), reader)
+        self.assertIs(utils.prepare_number_reader(), reader)
+
+        factory.assert_called_once_with()
+        self.screenshot.assert_not_called()
+        self.press.assert_not_called()
+
+    def test_local_reader_is_the_default_without_a_mode_setting(self):
+        factory, reader, _ = self.configure_local()
+        del os.environ["AUTO_RACE_READER"]
+
+        self.assertIs(utils.prepare_number_reader(), reader)
+
+        factory.assert_called_once_with()
+        self.screenshot.assert_not_called()
+        self.press.assert_not_called()
+
+    def test_invalid_reader_mode_never_falls_back_to_legacy_recognition(self):
+        factory, reader, _ = self.configure_local()
+        for mode in ("vision", "vison", ""):
+            with self.subTest(mode=mode):
+                os.environ["AUTO_RACE_READER"] = mode
+                with self.assertRaisesRegex(ValueError, "AUTO_RACE_READER"):
+                    utils.prepare_number_reader()
+                self.assertFalse(auto_race.do_ar_step_3(self.box))
+        factory.assert_not_called()
+        reader.read_equation.assert_not_called()
+        self.screenshot.assert_not_called()
+        self.press.assert_not_called()
+        self.ocr.assert_not_called()
+
+    def test_invalid_local_region_never_captures_or_sends_answer(self):
+        factory, reader, _ = self.configure_local()
+        for configured in (
+            "", "1,2,3", "1,2,3,4,5", "1.5,2,3,4", "a,2,3,4",
+            "1,2,0,40", "1,2,100,-1", "1,2,4097,40", "1,2,100,4097",
+        ):
+            with self.subTest(configured=configured):
+                os.environ["AUTO_RACE_EQUATION_REGION"] = configured
+                with self.assertRaisesRegex(ValueError, "(REGION|largura)"):
+                    utils.prepare_number_reader()
+                self.assertFalse(auto_race.do_ar_step_3(self.box))
+        factory.assert_not_called()
+        reader.read_equation.assert_not_called()
+        self.screenshot.assert_not_called()
+        self.press.assert_not_called()
+        self.ocr.assert_not_called()
 
     def test_numpy_box_coordinates_work_with_windows_screenshot(self):
         box = pyscreeze.Box(np.int64(100), np.int64(200), np.int64(596), np.int64(125))

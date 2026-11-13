@@ -16,6 +16,10 @@ def monitor_esc():
     print("ESC pressionado. Finalizando script...")
 
 def executar_script():
+    try:
+        utils.prepare_number_reader()
+    except (ValueError, RuntimeError) as error:
+        raise SystemExit(f"[Configuração] {error}") from None
     threading.Thread(target=monitor_esc, daemon=True).start()
     waiting_for_field = False
     
@@ -43,8 +47,13 @@ def check_build():
         raise FileNotFoundError("Dados de OCR nao encontrados.")
     utils.pytesseract.pytesseract.tesseract_cmd = str(tesseract)
     version = utils.pytesseract.get_tesseract_version()
+    from PIL import Image
+    from src.auto_race.local_reader import LocalEquationReader
+
+    # Carrega os pesos e as DLLs também no executável, sem interagir com o jogo.
+    LocalEquationReader().read_equation(Image.new("L", (100, 40), 255))
     print(f"Executavel: {Path(sys.executable).name}")
-    print(f"Build OK: {len(utils.AWNSERS_CACHE)} templates; Tesseract {version}.")
+    print(f"Build OK: OCR local carregado; {len(utils.AWNSERS_CACHE)} templates; Tesseract {version}.")
 
 
 if __name__ == "__main__":

@@ -100,6 +100,62 @@ def load_awnsers_images():
 # Inicializa o cache ao carregar o módulo
 AWNSERS_CACHE = load_awnsers_images()
 DIGIT_TEMPLATES = DigitTemplateBank(get_resource_path("images/awnsers"))
+
+_LOCAL_READER = None
+_LOCAL_RETRY_AT = 0.0
+_LOCAL_RETRY_SECONDS = 5.0
+
+
+def _number_reader_mode():
+    mode = os.environ.get("AUTO_RACE_READER", "local").strip().lower()
+    if mode not in ("local", "templates"):
+        raise ValueError("AUTO_RACE_READER deve ser local ou templates")
+    return mode
+
+
+def _equation_region_offsets():
+    configured = os.environ.get("AUTO_RACE_EQUATION_REGION", "-174,-19,100,40")
+    parts = configured.split(",")
+    if len(parts) != 4 or any(
+        re.fullmatch(r"[+-]?[0-9]+", part.strip()) is None for part in parts
+    ):
+        raise ValueError("AUTO_RACE_EQUATION_REGION deve conter dx,dy,largura,altura inteiros")
+    dx, dy, width, height = (int(part.strip()) for part in parts)
+    if not (1 <= width <= 4096 and 1 <= height <= 4096):
+        raise ValueError("A largura e a altura da equação devem estar entre 1 e 4096")
+    return dx, dy, width, height
+
+
+def prepare_number_reader():
+    """Valida a configuração e carrega o reconhecedor local uma única vez."""
+    global _LOCAL_READER
+    if _number_reader_mode() == "templates":
+        return None
+    _equation_region_offsets()
+    if _LOCAL_READER is None:
+        from src.auto_race.local_reader import LocalEquationReader
+
+        _LOCAL_READER = LocalEquationReader()
+    return _LOCAL_READER
+
+
+def _read_local_equation(origin):
+    global _LOCAL_RETRY_AT
+    if time.monotonic() < _LOCAL_RETRY_AT:
+        return None
+    try:
+        reader = prepare_number_reader()
+        dx, dy, width, height = _equation_region_offsets()
+        x, y = origin
+        region = (int(x) + dx, int(y) + dy, width, height)
+        equation = reader.read_equation(pyautogui.screenshot(region=region))
+    except Exception:
+        _LOCAL_RETRY_AT = time.monotonic() + _LOCAL_RETRY_SECONDS
+        raise
+    if equation is None:
+        _LOCAL_RETRY_AT = time.monotonic() + _LOCAL_RETRY_SECONDS
+        print("[OCR] Não foi possível reconhecer a soma. Nova tentativa em 5 segundos.")
+    return equation
     
 def extract_number_from_region(region, scale_percent=400):
     # O OpenCV retorna np.int64; a captura do Windows exige int nativo.
@@ -157,11 +213,18 @@ def extract_number_from_region(region, scale_percent=400):
 def resolve_equation(origin=None):
     try:
         mouse_x, mouse_y = pyautogui.position() if origin is None else origin
-        num1 = extract_number_from_region((mouse_x - 174, mouse_y - 19, 40, 40))
-        num2 = extract_number_from_region((mouse_x - 124, mouse_y - 19, 40, 40))
+        if _number_reader_mode() == "local":
+            equation = _read_local_equation((mouse_x, mouse_y))
+            if equation is None:
+                return False
+            num1, num2 = equation.left, equation.right
+            resultado = equation.result
+        else:
+            num1 = extract_number_from_region((mouse_x - 174, mouse_y - 19, 40, 40))
+            num2 = extract_number_from_region((mouse_x - 124, mouse_y - 19, 40, 40))
+            resultado = num1 + num2 if num1 is not None and num2 is not None else None
 
         if num1 is not None and num2 is not None:
-            resultado = num1 + num2
             print(f"[OCR] Resultado: {num1} + {num2} = {resultado}")
             for digit in str(resultado):
                 keyboard.press_and_release(digit)

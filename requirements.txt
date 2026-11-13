@@ -5,3 +5,4 @@ pillow
 pytesseract
 sympy 
 matplotlib
+ddddocr==1.6.1
